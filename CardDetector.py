@@ -2,7 +2,7 @@ from ultralytics import YOLO
 import cv2
 from collections import Counter, defaultdict
 
-model = YOLO("runs/detect/train2/weights/best.pt")
+model = YOLO("YOLO model/runs/detect/train2/weights/best.pt")
 model.to("cuda")
 
 cap = cv2.VideoCapture(0)
@@ -33,8 +33,6 @@ def majority_list(items):
         return None
     return most_common
 
-    return Counter(items).most_common(1)[0][0]
-
 
 def current_game_state():
     """Get current game state"""
@@ -63,7 +61,7 @@ while True:
     if not plugged:
         break
 
-    results = model.track(frame, persist=True, conf=MIN_CONF, verbose=False)
+    results = model.track(frame, conf=MIN_CONF, verbose=False, persist=True)
 
     if results and results[0].boxes is not None:
         boxes = results[0].boxes
@@ -89,7 +87,7 @@ while True:
 
     annotated = results[0].plot() if results else frame.copy()
 
-    cv2.putText(annotated, f"Cards: {cards}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 3)
+    cv2.putText(annotated, f"Cards: {cards}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 225, 0), 2)
 
     cv2.imshow("Card Tracker", annotated)
     frame_count += 1

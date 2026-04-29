@@ -11,7 +11,7 @@ cap = cv2.VideoCapture(0)
 
 track_label_history = defaultdict(list)
 track_last_seen = {}
-track_positions = {}  # Store latest bounding box center per track_id
+track_positions = {}
 track_confidences = {}
 
 MIN_CONF = 0.5
@@ -19,9 +19,8 @@ MAJ_CONF = 0.6
 MIN_STABLE_FRAMES = 1
 MAX_MISSING_FRAMES = 45
 
-# DBSCAN parameters — tune these to your camera/table setup
-DBSCAN_EPS = 200        # Max pixel distance between cards in the same cluster
-DBSCAN_MIN_SAMPLES = 1  # Allow clusters of 1+ cards
+DBSCAN_EPS = 120
+DBSCAN_MIN_SAMPLES = 2
 
 frame_count = 0
 

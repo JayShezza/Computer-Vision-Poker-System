@@ -238,7 +238,7 @@ if __name__ == "__main__":
     mc_start = time.time()
     mc_results = monte_carlo_equity(
         players_hole_cards=[['AH', '2H'], ['QS', 'QC']],
-        community_cards=['3C','4C','5D', '9D', '7C'],
+        community_cards=[],
         simulations=MC_SIMULATIONS
     )
     mc_end = time.time()

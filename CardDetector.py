@@ -3,12 +3,15 @@ import cv2
 from collections import Counter, defaultdict
 import numpy as np
 from sklearn.cluster import DBSCAN
+#import CardMonteCarloEquity
 
 model = YOLO("runs/detect/train2/weights/best.pt")
 model.to("cuda")
 
 cap = cv2.VideoCapture(0)
 
+cluster_first_seen = {}
+cluster_printed = set()
 track_label_history = defaultdict(list)
 track_last_seen = {}
 track_positions = {}
@@ -16,11 +19,12 @@ track_confidences = {}
 
 MIN_CONF = 0.35
 MAJ_CONF = 0.6
-MIN_STABLE_FRAMES = 1
+MIN_STABLE_FRAMES = 5
 MAX_MISSING_FRAMES = 45
+MAJ_WINDOW = 30
 
-DBSCAN_EPS = 120
-DBSCAN_MIN_SAMPLES = 2
+DBSCAN_EPS = 500
+DBSCAN_MIN_SAMPLES = 1
 
 frame_count = 0
 
@@ -79,7 +83,7 @@ def cluster_cards(active_cards):
     if not active_cards:
         return []
 
-    centers = np.array([c["center"] for c in active_cards])
+    centers = np.array([[c["center"][0] * 1.0, c["center"][1] * 3.0] for c in active_cards])
 
     db = DBSCAN(eps=DBSCAN_EPS, min_samples=DBSCAN_MIN_SAMPLES).fit(centers)
     labels = db.labels_
@@ -158,7 +162,7 @@ while True:
                 if conf < MIN_CONF:
                     continue
 
-                # Compute bounding box center
+                # Card coords center
                 x1, y1, x2, y2 = box.tolist()
                 cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
                 track_positions[track_id] = (cx, cy)
@@ -166,7 +170,7 @@ while True:
                 label = model.names[cls_id]
                 track_label_history[track_id].append(label)
                 track_last_seen[track_id] = frame_count
-                track_label_history[track_id] = track_label_history[track_id][-20:]
+                track_label_history[track_id] = track_label_history[track_id][-MAJ_WINDOW:]
 
     active_cards = current_game_state()
     active_cards = deduplicate_cards(active_cards)
@@ -175,11 +179,28 @@ while True:
     annotated = results[0].plot() if results else frame.copy()
     annotated = draw_cluster_overlay(annotated, clusters)
 
-    # HUD summary
-    for i, cluster in enumerate(clusters):
-        text = f"[{cluster['role']}] {', '.join(cluster['cards'])}"
-        cv2.putText(annotated, text, (20, 40 + i * 28),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    # HUD
+    current_keys = set()
+    for cluster in clusters:
+
+        centers = [c["center"] for c in active_cards]
+        if len(centers) >= 2:
+            xs = [c[0] for c in centers]
+            ys = [c[1] for c in centers]
+            print(f"X spread: {max(xs) - min(xs)}px, Y spread: {max(ys) - min(ys)}px")
+
+        if cluster["role"] not in ("Player Hand", "Community Cards"):
+            continue
+        key = f"{cluster['role']}:{','.join(sorted(cluster['cards']))}"
+        current_keys.add(key)
+        if key not in cluster_first_seen:
+            cluster_first_seen[key] = frame_count
+        elif frame_count - cluster_first_seen[key] == 30:
+            print(f"{cluster['role']}: {cluster['cards']}")
+
+    for key in list(cluster_first_seen):
+        if key not in current_keys:
+            del cluster_first_seen[key]
 
     cv2.imshow("Card Tracker", annotated)
     frame_count += 1

@@ -231,14 +231,14 @@ def get_hand_ranking(playersHand, sharedCards):
         ahead = 0
         tied = 0
         behind = 0
-        playersRank, potentialHands = calculateHandRanking(revealedCards, True)
+        playersRank, potentialHands = calculate_hand_ranking(revealedCards, True)
 
         for card in revealedCards:
             FULL_DECK.remove(card)
         combinationOfTwo = list(combinations(FULL_DECK, 2))
         for combination in combinationOfTwo:
             possibility = sharedCards + list(combination)
-            opponentsHand, _ = calculateHandRanking(possibility, False)
+            opponentsHand, _ = calculate_hand_ranking(possibility, False)
             if playersRank > opponentsHand:
                 ahead += 1
             elif playersRank == opponentsHand:
@@ -310,67 +310,6 @@ def exact_equity_multiplayer(players_hole_cards, community_cards):
 
 
 
-def monte_carlo_equity(players_hole_cards, community_cards, simulations=100000):
-    """
-    players_hole_cards: list of lists e.g. [['AC', 'AS'], ['KH', 'KD']]
-    community_cards: list e.g. ['2H', '7D', '10C']
-    simulations: number of random runouts to sample (higher = more accurate but slower)
-    """
-    all_known_cards = community_cards + [card for hand in players_hole_cards for card in hand]
-    remaining_deck = [c for c in newDeck if c not in all_known_cards]
-    cards_needed = 5 - len(community_cards)
-
-    num_players = len(players_hole_cards)
-    wins = [0] * num_players
-    ties = [0] * num_players
-    losses = [0] * num_players
-
-    for _ in range(simulations):
-        # Randomly sample just enough cards to complete the board
-        sampled = random.sample(remaining_deck, cards_needed)
-        full_board = community_cards + sampled
-
-        # Score every player on this random board
-        scores = []
-        for hole_cards in players_hole_cards:
-            score, _ = calculate_hand_ranking(hole_cards + full_board, False)
-            scores.append(score)
-
-        best_score = max(scores)
-        winners = [i for i, s in enumerate(scores) if s == best_score]
-
-        for i in range(num_players):
-            if scores[i] == best_score and len(winners) == 1:
-                wins[i] += 1
-            elif scores[i] == best_score and len(winners) > 1:
-                ties[i] += 1
-            else:
-                losses[i] += 1
-
-    results = []
-    for i in range(num_players):
-        total = wins[i] + ties[i] + losses[i]
-        equity = round((wins[i] + ties[i] / 2) / total * 100, 2)
-        results.append({
-            'player': i + 1,
-            'hole_cards': players_hole_cards[i],
-            'equity': equity,
-            'wins': wins[i],
-            'ties': ties[i],
-            'losses': losses[i]
-        })
-
-    return results
-
-
-# Compare both methods
-mc_start = time.time()
-mc_results = monte_carlo_equity(
-    players_hole_cards = [['3C', '2C'], ['QC', 'KC']],
-    community_cards = [],
-    simulations = MC_SIMULATIONS
-)
-mc_end = time.time()
 
 ee_start = time.time()
 ee_results = exact_equity_multiplayer(
@@ -379,11 +318,6 @@ ee_results = exact_equity_multiplayer(
 )
 ee_end = time.time()
 
-print("=== Monte Carlo ===")
-for r in mc_results:
-    print(
-        f"Player {r['player']} {r['hole_cards']}: {r['equity']}% equity  |  W: {r['wins']} T: {r['ties']} L: {r['losses']}")
-print(f"Time taken: {round(mc_end - mc_start, 2)} seconds")
 
 print("=== Exact Equity ===")
 for r in ee_results:

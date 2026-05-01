@@ -14,7 +14,7 @@ track_last_seen = {}
 track_positions = {}
 track_confidences = {}
 
-MIN_CONF = 0.5
+MIN_CONF = 0.35
 MAJ_CONF = 0.6
 MIN_STABLE_FRAMES = 1
 MAX_MISSING_FRAMES = 45

@@ -201,7 +201,23 @@ while True:
     active_cards = deduplicate_cards(active_cards)
     clusters = cluster_cards(active_cards)
 
+    # --- SINGLE CARD STABILITY PRINT (for testing) ---
+    if len(active_cards) == 1:
+        card = active_cards[0]["label"]
+        card_id = active_cards[0]["id"]
 
+        if card_id not in cluster_first_seen:
+            cluster_first_seen[card_id] = frame_count
+
+        elif card_id not in cluster_printed and frame_count - cluster_first_seen[card_id] >= 30:
+            print(f"{card} detected")
+            cluster_printed.add(card_id)
+    else:
+        # reset when not exactly one card
+        for card_id in list(cluster_first_seen):
+            if card_id not in [c["id"] for c in active_cards]:
+                cluster_first_seen.pop(card_id, None)
+                cluster_printed.discard(card_id)
 
     # HUD
     current_keys = set()

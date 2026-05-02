@@ -244,7 +244,8 @@ if __name__ == "__main__":
     mc_end = time.time()
 
     print("=== Monte Carlo ===")
+    print(mc_results)
+
     for r in mc_results:
-        print(
-            f"Player {r['player']} {r['hole_cards']}: {r['equity']}% equity  |  W: {r['wins']} T: {r['ties']} L: {r['losses']}")
+        print(f"Player {r['player']} {r['hole_cards']}: {r['equity']}% equity  |  W: {r['wins']} T: {r['ties']} L: {r['losses']}")
     print(f"Time taken: {round(mc_end - mc_start, 2)} seconds")

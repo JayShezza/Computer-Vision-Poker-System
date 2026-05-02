@@ -3,9 +3,9 @@ import cv2
 from collections import Counter, defaultdict
 import numpy as np
 from sklearn.cluster import DBSCAN
-#import CardMonteCarloEquity
+from CardMonteCarloEquity import monte_carlo_equity
 
-model = YOLO("runs/detect/train2/weights/best.pt")
+model = YOLO("../best.pt")
 model.to("cuda")
 
 cap = cv2.VideoCapture(0)
@@ -16,15 +16,21 @@ track_label_history = defaultdict(list)
 track_last_seen = {}
 track_positions = {}
 track_confidences = {}
+equity_pending = {}
+equity_printed = set()
+last_equity_results = None
 
-MIN_CONF = 0.35
-MAJ_CONF = 0.6
-MIN_STABLE_FRAMES = 5
-MAX_MISSING_FRAMES = 45
-MAJ_WINDOW = 30
-
-DBSCAN_EPS = 500
-DBSCAN_MIN_SAMPLES = 1
+# ---- GLOBALS ---- #
+MIN_CONF = 0.35               # How confident does YOLO need to be in its prediction
+MAJ_CONF = 0.6                # How many times does the same prediction get made in the MAJ_WINDOW
+MIN_STABLE_FRAMES = 5         # Cards must be stable for this many frames minimum
+MAX_MISSING_FRAMES = 45       # How many frames before cards are removed
+MAJ_WINDOW = 30               # How many frames to look over cards
+EQUITY_CALC_DELAY_FRAMES = 45 # frames before detected board is sent to equity calculations
+MIN_PLAYER_HANDS = 2          # Minimum holes needed before sending to equity
+MC_SIMULATIONS = 10000        # How many times to simulate board (higher == longer time && more accurate) 10,000 ~ 3s
+DBSCAN_EPS = 500              # Radius in pixels to cluster
+DBSCAN_MIN_SAMPLES = 1        # Min number of cards per cluster
 
 frame_count = 0
 
@@ -73,17 +79,11 @@ def current_game_state():
 
 
 def cluster_cards(active_cards):
-    """
-    Uses DBSCAN to spatially cluster cards, then classifies each cluster:
-      - 2 cards    → Player Hand
-      - 3–5 cards  → Community Cards
-      - other      → Unknown Group
-    Returns a list of cluster dicts.
-    """
+    """Uses DBSCAN to cluster cards by position and assigns them a role."""
     if not active_cards:
         return []
 
-    centers = np.array([[c["center"][0] * 1.0, c["center"][1] * 3.0] for c in active_cards])
+    centers = np.array([[c["center"][0] * 1.0, c["center"][1] * 5.0] for c in active_cards])
 
     db = DBSCAN(eps=DBSCAN_EPS, min_samples=DBSCAN_MIN_SAMPLES).fit(centers)
     labels = db.labels_
@@ -127,9 +127,12 @@ def draw_cluster_overlay(frame, clusters):
         x1, y1 = max(0, min(xs) - 60), max(0, min(ys) - 90)
         x2, y2 = min(frame.shape[1], max(xs) + 60), min(frame.shape[0], max(ys) + 90)
 
-        color = (0, 200, 255) if cluster["role"] == "Player Hand" else \
-                (0, 255, 100) if cluster["role"] == "Community Cards" else \
-                (180, 180, 180)
+        if cluster["role"] == "Player Hand":
+            color = (0, 150, 255)
+        elif cluster["role"] == "Community Cards":
+            color = (0, 255, 150)
+        else:
+            color = (150, 150, 150)
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
         label = f"{cluster['role']}: {', '.join(cluster['cards'])}"
@@ -138,6 +141,28 @@ def draw_cluster_overlay(frame, clusters):
 
     return frame
 
+
+def draw_equity_overlay(frame, equity_results, player_hands):
+    """Draw Equity results onto cards on screen"""
+    if not equity_results or not player_hands:
+        return frame
+
+    y_offset = 30
+    cv2.putText(frame, "Equity:", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 55, 0), 2)
+    y_offset += 30
+
+    for result in equity_results:
+        cards_str = ", ".join(result["hole_cards"])
+        equity = result["equity"]
+        wins = result["wins"]
+        ties = result["ties"]
+        losses = result["losses"]
+        text = f"P{result['player']} [{cards_str}]  Equity: {equity:.1f}%"
+        cv2.putText(frame, text, (10, y_offset),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 55, 0), 2)
+        y_offset += 28
+
+    return frame
 
 while True:
     plugged, frame = cap.read()
@@ -176,27 +201,63 @@ while True:
     active_cards = deduplicate_cards(active_cards)
     clusters = cluster_cards(active_cards)
 
-    annotated = results[0].plot() if results else frame.copy()
-    annotated = draw_cluster_overlay(annotated, clusters)
-
     # HUD
     current_keys = set()
+    player_hands = [c for c in clusters if c["role"] == "Player Hand"]
+    community = [c for c in clusters if c["role"] == "Community Cards"]
+
+    annotated = results[0].plot() if results else frame.copy()
+    annotated = draw_cluster_overlay(annotated, clusters)
+    annotated = draw_equity_overlay(annotated, last_equity_results, player_hands)
+
+
+
     for cluster in clusters:
-
-        centers = [c["center"] for c in active_cards]
-        if len(centers) >= 2:
-            xs = [c[0] for c in centers]
-            ys = [c[1] for c in centers]
-            print(f"X spread: {max(xs) - min(xs)}px, Y spread: {max(ys) - min(ys)}px")
-
         if cluster["role"] not in ("Player Hand", "Community Cards"):
             continue
         key = f"{cluster['role']}:{','.join(sorted(cluster['cards']))}"
         current_keys.add(key)
+
         if key not in cluster_first_seen:
             cluster_first_seen[key] = frame_count
         elif frame_count - cluster_first_seen[key] == 30:
             print(f"{cluster['role']}: {cluster['cards']}")
+
+    if len(player_hands) >= MIN_PLAYER_HANDS:
+        all_cards = sorted(
+            [c for cl in player_hands + community for c in cl["cards"]]
+        )
+        equity_key = "|".join(all_cards)
+
+        if equity_key not in equity_pending:
+            equity_pending[equity_key] = frame_count
+        elif (
+                equity_key not in equity_printed
+                and frame_count - equity_pending[equity_key] >= EQUITY_CALC_DELAY_FRAMES
+        ):
+            # Equity Calcs
+            community_cards = community[0]["cards"] if community else []
+            hands = [h["cards"] for h in player_hands]
+            print(f"[Equity Trigger] Community: {community_cards}, Hands: {hands}")
+
+            last_equity_results = monte_carlo_equity(
+                players_hole_cards=hands,
+                community_cards=community_cards,
+                simulations=MC_SIMULATIONS
+            )
+
+            for r in last_equity_results:
+                print(f"Player {r['player']} {r['hole_cards']}: {r['equity']}% equity  |  W: {r['wins']} T: {r['ties']} L: {r['losses']}")
+
+            equity_printed.add(equity_key)
+
+    # Invalidate pending equity states that are no longer visible
+    for key in list(equity_pending):
+        cards_in_key = set(key.split("|"))
+        visible_cards = {c for cl in clusters for c in cl["cards"]}
+        if not cards_in_key.issubset(visible_cards):
+            del equity_pending[key]
+            equity_printed.discard(key)  # allow recalculation if cards reappear
 
     for key in list(cluster_first_seen):
         if key not in current_keys:

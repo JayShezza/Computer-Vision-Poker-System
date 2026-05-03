@@ -237,14 +237,13 @@ def monte_carlo_equity(players_hole_cards, community_cards, simulations=10000):
 if __name__ == "__main__":
     mc_start = time.time()
     mc_results = monte_carlo_equity(
-        players_hole_cards=[['AH', '2H'], ['QS', 'QC']],
+        players_hole_cards=[['AS', 'AC'], ['KS', 'KC']],
         community_cards=[],
         simulations=MC_SIMULATIONS
     )
     mc_end = time.time()
 
     print("=== Monte Carlo ===")
-    print(mc_results)
 
     for r in mc_results:
         print(f"Player {r['player']} {r['hole_cards']}: {r['equity']}% equity  |  W: {r['wins']} T: {r['ties']} L: {r['losses']}")

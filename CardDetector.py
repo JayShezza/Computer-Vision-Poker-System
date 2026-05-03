@@ -29,7 +29,7 @@ MAJ_WINDOW = 30               # How many frames to look over cards
 EQUITY_CALC_DELAY_FRAMES = 45 # frames before detected board is sent to equity calculations
 MIN_PLAYER_HANDS = 2          # Minimum holes needed before sending to equity
 MC_SIMULATIONS = 10000        # How many times to simulate board (higher == longer time && more accurate) 10,000 ~ 3s
-DBSCAN_EPS = 500              # Radius in pixels to cluster
+DBSCAN_EPS = 600              # Radius in pixels to cluster
 DBSCAN_MIN_SAMPLES = 1        # Min number of cards per cluster
 
 frame_count = 0
@@ -83,7 +83,7 @@ def cluster_cards(active_cards):
     if not active_cards:
         return []
 
-    centers = np.array([[c["center"][0] * 1.0, c["center"][1] * 5.0] for c in active_cards])
+    centers = np.array([[c["center"][0] * 1.0, c["center"][1] * 6.0] for c in active_cards])
 
     db = DBSCAN(eps=DBSCAN_EPS, min_samples=DBSCAN_MIN_SAMPLES).fit(centers)
     labels = db.labels_
@@ -210,7 +210,7 @@ while True:
 
     annotated = results[0].plot() if results else frame.copy()
     annotated = draw_cluster_overlay(annotated, clusters)
-    annotated = draw_equity_overlay(annotated, last_equity_results, player_hands)
+   # annotated = draw_equity_overlay(annotated, last_equity_results, player_hands)
 
 
 
